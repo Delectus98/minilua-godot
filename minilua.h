@@ -2796,7 +2796,8 @@ typedef union Closure {
 ** 'TValue' allows for a smaller size for 'Node' both in 4-byte
 ** and 8-byte alignments.
 */
-typedef union Node {
+typedef union 
+{
   struct NodeKey {
     TValuefields;  /* fields for value */
     lu_byte key_tt;  /* key type */
@@ -2804,19 +2805,19 @@ typedef union Node {
     Value key_val;  /* key value */
   } u;
   TValue i_val;  /* direct access to node's value as a proper 'TValue' */
-} Node;
+} LuaNode;
 
 
 /* copy a value into a key */
 #define setnodekey(L,node,obj) \
-	{ Node *n_=(node); const TValue *io_=(obj); \
+	{ LuaNode *n_=(node); const TValue *io_=(obj); \
 	  n_->u.key_val = io_->value_; n_->u.key_tt = io_->tt_; \
 	  checkliveness(L,io_); }
 
 
 /* copy a value from a key */
 #define getnodekey(L,obj,node) \
-	{ TValue *io_=(obj); const Node *n_=(node); \
+	{ TValue *io_=(obj); const LuaNode *n_=(node); \
 	  io_->value_ = n_->u.key_val; io_->tt_ = n_->u.key_tt; \
 	  checkliveness(L,io_); }
 
@@ -2840,8 +2841,8 @@ typedef struct Table {
   lu_byte lsizenode;  /* log2 of size of 'node' array */
   unsigned int alimit;  /* "limit" of 'array' array */
   TValue *array;  /* array part */
-  Node *node;
-  Node *lastfree;  /* any free position is before this position */
+  LuaNode *node;
+  LuaNode *lastfree;  /* any free position is before this position */
   struct Table *metatable;
   GCObject *gclist;
 } Table;
@@ -4654,7 +4655,7 @@ LUAI_FUNC const char *luaX_token2str (LexState *ls, int token);
 
 
 /* returns the Node, given the value of a table entry */
-#define nodefromval(v)	cast(Node *, (v))
+#define nodefromval(v)	cast(LuaNode *, (v))
 
 
 LUAI_FUNC const TValue *luaH_getint (Table *t, lua_Integer key);
@@ -4680,7 +4681,7 @@ LUAI_FUNC unsigned int luaH_realasize (const Table *t);
 
 
 #if defined(LUA_DEBUG)
-LUAI_FUNC Node *luaH_mainposition (const Table *t, const TValue *key);
+LUAI_FUNC LuaNode *luaH_mainposition (const Table *t, const TValue *key);
 LUAI_FUNC int luaH_isdummy (const Table *t);
 #endif
 
@@ -6804,7 +6805,7 @@ static void linkgclist_ (GCObject *o, GCObject **pnext, GCObject **list) {
 ** its associated empty value is enough to signal that the entry is
 ** logically empty.
 */
-static void clearkey (Node *n) {
+static void clearkey (LuaNode *n) {
   lua_assert(isempty(gval(n)));
   if (keyiscollectable(n))
     setdeadkey(n);  /* unused key; remove it */
@@ -7074,7 +7075,7 @@ static void genlink (global_State *g, GCObject *o) {
 ** put it in 'weak' list, to be cleared.
 */
 static void traverseweakvalue (global_State *g, Table *h) {
-  Node *n, *limit = gnodelast(h);
+  LuaNode *n, *limit = gnodelast(h);
   /* if there is array part, assume it may have white values (it is not
      worth traversing it now just to check) */
   int hasclears = (h->alimit > 0);
@@ -7124,7 +7125,7 @@ static int traverseephemeron (global_State *g, Table *h, int inv) {
   /* traverse hash part; if 'inv', traverse descending
      (see 'convergeephemerons') */
   for (i = 0; i < nsize; i++) {
-    Node *n = inv ? gnode(h, nsize - 1 - i) : gnode(h, i);
+    LuaNode *n = inv ? gnode(h, nsize - 1 - i) : gnode(h, i);
     if (isempty(gval(n)))  /* entry is empty? */
       clearkey(n);  /* clear its key */
     else if (iscleared(g, gckeyN(n))) {  /* key is not marked (yet)? */
@@ -7151,7 +7152,7 @@ static int traverseephemeron (global_State *g, Table *h, int inv) {
 
 
 static void traversestrongtable (global_State *g, Table *h) {
-  Node *n, *limit = gnodelast(h);
+  LuaNode *n, *limit = gnodelast(h);
   unsigned int i;
   unsigned int asize = luaH_realasize(h);
   for (i = 0; i < asize; i++)  /* traverse array part */
@@ -7353,8 +7354,8 @@ static void convergeephemerons (global_State *g) {
 static void clearbykeys (global_State *g, GCObject *l) {
   for (; l; l = gco2t(l)->gclist) {
     Table *h = gco2t(l);
-    Node *limit = gnodelast(h);
-    Node *n;
+    LuaNode *limit = gnodelast(h);
+    LuaNode *n;
     for (n = gnode(h, 0); n < limit; n++) {
       if (iscleared(g, gckeyN(n)))  /* unmarked key? */
         setempty(gval(n));  /* remove entry */
@@ -7372,7 +7373,7 @@ static void clearbykeys (global_State *g, GCObject *l) {
 static void clearbyvalues (global_State *g, GCObject *l, GCObject *f) {
   for (; l != f; l = gco2t(l)->gclist) {
     Table *h = gco2t(l);
-    Node *n, *limit = gnodelast(h);
+    LuaNode *n, *limit = gnodelast(h);
     unsigned int i;
     unsigned int asize = luaH_realasize(h);
     for (i = 0; i < asize; i++) {
@@ -13836,7 +13837,7 @@ void luaF_newtbcupval (lua_State *L, StkId level) {
     return;  /* false doesn't need to be closed */
   checkclosemth(L, level);  /* value must have a close method */
   while (cast_uint(level - L->tbclist) > MAXDELTA) {
-    L->tbclist += MAXDELTA;  /* create a dummy node at maximum delta */
+    L->tbclist += MAXDELTA;  /* create a dummy LuaNode at maximum delta */
     L->tbclist->tbclist.delta = 0;
   }
   level->tbclist.delta = cast(unsigned short, level - L->tbclist);
@@ -15159,7 +15160,7 @@ Udata *luaS_newudata (lua_State *L, size_t s, int nuvalue) {
 ** between 2^MAXHBITS and the maximum size such that, measured in bytes,
 ** it fits in a 'size_t'.
 */
-#define MAXHSIZE	luaM_limitN(1u << MAXHBITS, Node)
+#define MAXHSIZE	luaM_limitN(1u << MAXHBITS, LuaNode)
 
 
 /*
@@ -15184,7 +15185,7 @@ Udata *luaS_newudata (lua_State *L, size_t s, int nuvalue) {
 
 #define dummynode		(&dummynode_)
 
-static const Node dummynode_ = {
+static const LuaNode dummynode_ = {
   {{NULL}, LUA_VEMPTY,  /* value's value and type */
    LUA_VNIL, 0, {NULL}}  /* key type, next, and key value */
 };
@@ -15199,7 +15200,7 @@ static const TValue absentkey = {ABSTKEYCONSTANT};
 ** remainder, which is faster. Otherwise, use an unsigned-integer
 ** remainder, which uses all bits and ensures a non-negative result.
 */
-static Node *hashint (const Table *t, lua_Integer i) {
+static LuaNode *hashint (const Table *t, lua_Integer i) {
   lua_Unsigned ui = l_castS2U(i);
   if (ui <= (unsigned int)INT_MAX)
     return hashmod(t, cast_int(ui));
@@ -15242,7 +15243,7 @@ static int l_hashfloat (lua_Number n) {
 ** returns the 'main' position of an element in a table (that is,
 ** the index of its hash value).
 */
-static Node *mainpositionTV (const Table *t, const TValue *key) {
+static LuaNode *mainpositionTV (const Table *t, const TValue *key) {
   switch (ttypetag(key)) {
     case LUA_VNUMINT: {
       lua_Integer i = ivalue(key);
@@ -15280,7 +15281,7 @@ static Node *mainpositionTV (const Table *t, const TValue *key) {
 }
 
 
-l_sinline Node *mainpositionfromnode (const Table *t, Node *nd) {
+l_sinline LuaNode *mainpositionfromnode (const Table *t, LuaNode *nd) {
   TValue key;
   getnodekey(cast(lua_State *, NULL), &key, nd);
   return mainpositionTV(t, &key);
@@ -15288,7 +15289,7 @@ l_sinline Node *mainpositionfromnode (const Table *t, Node *nd) {
 
 
 /*
-** Check whether key 'k1' is equal to the key in node 'n2'. This
+** Check whether key 'k1' is equal to the key in LuaNode 'n2'. This
 ** equality is raw, so there are no metamethods. Floats with integer
 ** values have been normalized, so integers cannot be equal to
 ** floats. It is assumed that 'eqshrstr' is simply pointer equality, so
@@ -15307,7 +15308,7 @@ l_sinline Node *mainpositionfromnode (const Table *t, Node *nd) {
 ** positive does not break anything.  (In particular, 'next' will return
 ** some other valid item on the table or nil.)
 */
-static int equalkey (const TValue *k1, const Node *n2, int deadok) {
+static int equalkey (const TValue *k1, const LuaNode *n2, int deadok) {
   if ((rawtt(k1) != keytt(n2)) &&  /* not the same variants? */
        !(deadok && keyisdead(n2) && iscollectable(k1)))
    return 0;  /* cannot be same key */
@@ -15389,7 +15390,7 @@ static unsigned int setlimittosize (Table *t) {
 ** See explanation about 'deadok' in function 'equalkey'.
 */
 static const TValue *getgeneric (Table *t, const TValue *key, int deadok) {
-  Node *n = mainpositionTV(t, key);
+  LuaNode *n = mainpositionTV(t, key);
   for (;;) {  /* check whether 'key' is somewhere in the chain */
     if (equalkey(key, n, deadok))
       return gval(n);  /* that's it */
@@ -15450,7 +15451,7 @@ int luaH_next (lua_State *L, Table *t, StkId key) {
   }
   for (i -= asize; cast_int(i) < sizenode(t); i++) {  /* hash part */
     if (!isempty(gval(gnode(t, i)))) {  /* a non-empty entry? */
-      Node *n = gnode(t, i);
+      LuaNode *n = gnode(t, i);
       getnodekey(L, s2v(key), n);
       setobj2s(L, key + 1, gval(n));
       return 1;
@@ -15550,7 +15551,7 @@ static int numusehash (const Table *t, unsigned int *nums, unsigned int *pna) {
   int ause = 0;  /* elements added to 'nums' (can go to array part) */
   int i = sizenode(t);
   while (i--) {
-    Node *n = &t->node[i];
+    LuaNode *n = &t->node[i];
     if (!isempty(gval(n))) {
       if (keyisinteger(n))
         ause += countint(keyival(n), nums);
@@ -15564,16 +15565,16 @@ static int numusehash (const Table *t, unsigned int *nums, unsigned int *pna) {
 
 /*
 ** Creates an array for the hash part of a table with the given
-** size, or reuses the dummy node if size is zero.
+** size, or reuses the dummy LuaNode if size is zero.
 ** The computation for size overflow is in two steps: the first
 ** comparison ensures that the shift in the second one does not
 ** overflow.
 */
 static void setnodevector (lua_State *L, Table *t, unsigned int size) {
   if (size == 0) {  /* no elements to hash part? */
-    t->node = cast(Node *, dummynode);  /* use common 'dummynode' */
+    t->node = cast(LuaNode *, dummynode);  /* use common 'dummynode' */
     t->lsizenode = 0;
-    t->lastfree = NULL;  /* signal that it is using dummy node */
+    t->lastfree = NULL;  /* signal that it is using dummy LuaNode */
   }
   else {
     int i;
@@ -15581,9 +15582,9 @@ static void setnodevector (lua_State *L, Table *t, unsigned int size) {
     if (lsize > MAXHBITS || (1u << lsize) > MAXHSIZE)
       luaG_runerror(L, "table overflow");
     size = twoto(lsize);
-    t->node = luaM_newvector(L, size, Node);
+    t->node = luaM_newvector(L, size, LuaNode);
     for (i = 0; i < (int)size; i++) {
-      Node *n = gnode(t, i);
+      LuaNode *n = gnode(t, i);
       gnext(n) = 0;
       setnilkey(n);
       setempty(gval(n));
@@ -15601,7 +15602,7 @@ static void reinsert (lua_State *L, Table *ot, Table *t) {
   int j;
   int size = sizenode(ot);
   for (j = 0; j < size; j++) {
-    Node *old = gnode(ot, j);
+    LuaNode *old = gnode(ot, j);
     if (!isempty(gval(old))) {
       /* doesn't need barrier/invalidate cache, as entry was
          already present in the table */
@@ -15618,8 +15619,8 @@ static void reinsert (lua_State *L, Table *ot, Table *t) {
 */
 static void exchangehashpart (Table *t1, Table *t2) {
   lu_byte lsizenode = t1->lsizenode;
-  Node *node = t1->node;
-  Node *lastfree = t1->lastfree;
+  LuaNode *node = t1->node;
+  LuaNode *lastfree = t1->lastfree;
   t1->lsizenode = t2->lsizenode;
   t1->node = t2->node;
   t1->lastfree = t2->lastfree;
@@ -15734,7 +15735,7 @@ void luaH_free (lua_State *L, Table *t) {
 }
 
 
-static Node *getfreepos (Table *t) {
+static LuaNode *getfreepos (Table *t) {
   if (!isdummy(t)) {
     while (t->lastfree > t->node) {
       t->lastfree--;
@@ -15749,13 +15750,13 @@ static Node *getfreepos (Table *t) {
 
 /*
 ** inserts a new key into a hash table; first, check whether key's main
-** position is free. If not, check whether colliding node is in its main
-** position or not: if it is not, move colliding node to an empty place and
-** put new key in its main position; otherwise (colliding node is in its main
+** position is free. If not, check whether colliding LuaNode is in its main
+** position or not: if it is not, move colliding LuaNode to an empty place and
+** put new key in its main position; otherwise (colliding LuaNode is in its main
 ** position), new key goes to an empty position.
 */
 void luaH_newkey (lua_State *L, Table *t, const TValue *key, TValue *value) {
-  Node *mp;
+  LuaNode *mp;
   TValue aux;
   if (l_unlikely(ttisnil(key)))
     luaG_runerror(L, "table index is nil");
@@ -15773,8 +15774,8 @@ void luaH_newkey (lua_State *L, Table *t, const TValue *key, TValue *value) {
     return;  /* do not insert nil values */
   mp = mainpositionTV(t, key);
   if (!isempty(gval(mp)) || isdummy(t)) {  /* main position is taken? */
-    Node *othern;
-    Node *f = getfreepos(t);  /* get a free place */
+    LuaNode *othern;
+    LuaNode *f = getfreepos(t);  /* get a free place */
     if (f == NULL) {  /* cannot find a free place? */
       rehash(L, t, key);  /* grow table */
       /* whatever called 'newkey' takes care of TM cache */
@@ -15783,20 +15784,20 @@ void luaH_newkey (lua_State *L, Table *t, const TValue *key, TValue *value) {
     }
     lua_assert(!isdummy(t));
     othern = mainpositionfromnode(t, mp);
-    if (othern != mp) {  /* is colliding node out of its main position? */
-      /* yes; move colliding node into free position */
+    if (othern != mp) {  /* is colliding LuaNode out of its main position? */
+      /* yes; move colliding LuaNode into free position */
       while (othern + gnext(othern) != mp)  /* find previous */
         othern += gnext(othern);
       gnext(othern) = cast_int(f - othern);  /* rechain to point to 'f' */
-      *f = *mp;  /* copy colliding node into free pos. (mp->next also goes) */
+      *f = *mp;  /* copy colliding LuaNode into free pos. (mp->next also goes) */
       if (gnext(mp) != 0) {
         gnext(f) += cast_int(mp - f);  /* correct 'next' */
         gnext(mp) = 0;  /* now 'mp' is free */
       }
       setempty(gval(mp));
     }
-    else {  /* colliding node is in its own main position */
-      /* new node will go into free position */
+    else {  /* colliding LuaNode is in its own main position */
+      /* new LuaNode will go into free position */
       if (gnext(mp) != 0)
         gnext(f) = cast_int((mp + gnext(mp)) - f);  /* chain new position */
       else lua_assert(gnext(f) == 0);
@@ -15829,7 +15830,7 @@ const TValue *luaH_getint (Table *t, lua_Integer key) {
     return &t->array[key - 1];
   }
   else {
-    Node *n = hashint(t, key);
+    LuaNode *n = hashint(t, key);
     for (;;) {  /* check whether 'key' is somewhere in the chain */
       if (keyisinteger(n) && keyival(n) == key)
         return gval(n);  /* that's it */
@@ -15848,7 +15849,7 @@ const TValue *luaH_getint (Table *t, lua_Integer key) {
 ** search function for short strings
 */
 const TValue *luaH_getshortstr (Table *t, TString *key) {
-  Node *n = hashstr(t, key);
+  LuaNode *n = hashstr(t, key);
   lua_assert(key->tt == LUA_VSHRSTR);
   for (;;) {  /* check whether 'key' is somewhere in the chain */
     if (keyisshrstr(n) && eqshrstr(keystrval(n), key))
@@ -16065,7 +16066,7 @@ lua_Unsigned luaH_getn (Table *t) {
 
 /* export these functions for the test library */
 
-Node *luaH_mainposition (const Table *t, const TValue *key) {
+LuaNode*luaH_mainposition (const Table *t, const TValue *key) {
   return mainpositionTV(t, key);
 }
 
